@@ -205,6 +205,7 @@ def main():
 	for i in xrange(0,cores):
 		p = multiprocessing.Process(target=analyzer, args=(args,q,lock,))
 		p.start()
+	p.join()
 
 	# analyzer(args, apk_files)
 	

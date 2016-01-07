@@ -4,8 +4,10 @@ import subprocess
 
 import shutil
 import os
+
 from os import listdir, makedirs
 from os.path import isfile, join
+
 
 def get_files_in_dir(dir_path):
 	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
@@ -14,6 +16,23 @@ def simple_grep(pattern, path, options):
 	process = subprocess.Popen(['grep', options, pattern, path], stdout=subprocess.PIPE)
 	stdout, stderr = process.communicate()
 	return stdout
+
+def print_not_matches(data, patterns):
+	if not len(data) > 0:
+		return
+	# SLOW
+	for line in data.splitlines():
+		found = False
+		for pat in patterns:
+			# print pat
+			# print line
+			# print line.find(pat)
+			# raw_input(">")
+			if line.find(pat) > -1:
+				found = True
+				break
+		if not found:
+			print line
 
 def main():
 	parser = argparse.ArgumentParser(description='analyzer of APKs')
@@ -28,15 +47,29 @@ def main():
 	args = parser.parse_args()
 
 
-
 	apk_files = get_files_in_dir(args.in_dir)
 
 	found_apks = []
 	if not args.skip_extract:
 		if not os.path.exists(args.out_dir):
 			os.makedirs(args.out_dir)
-		
-		print apk_files
+
+		aws_pat = [
+			"Binary file",
+			"Lorg/codehaus/jackson/map/JsonSerializer",
+			"Lorg/codehaus/jackson/type/TypeReference",
+			"Lcom/amazonaws/internal/config/JsonIndex",
+			"Lorg/apache/commons/lang3/text/StrLookup",
+			"smali/assets/languagePacks.json",
+			"/com/amazon/",
+			"smali/res/values/",
+			"/com/google/common/",
+			"com/amazon/identity/auth/device/framework/",
+			"ABCDEFGHJKLMNPQRSTXY",
+			"original/META-INF/MANIFEST.MF:Name:",
+			"/xerces/util/EncodingMap.smali:"]
+
+		# print apk_files
 		for apk_file in apk_files:
 			out_dir = args.out_dir + "/%s" % apk_file
 			os.makedirs(out_dir)
@@ -53,20 +86,20 @@ def main():
 			print "extracted %s to %s" % (apk_file, extract_dir)
 
 
-			print "\n\nGREP: %s\n" % apk_file
+			print "GREP: %s\n" % apk_file
 			# print "apiKey:"
 			# print simple_grep("apiKey", extract_dir, "-ri")
 			
 			found_id = found_key = False
 			out = simple_grep("ACCESS_KEY_ID", extract_dir, "-ri")
 			if len(out) > 0:
-				print "AWS_ID:"
-				print out
+				# print "AWS_ID:"
+				# print out
 				found_id = True
 			out = simple_grep("SECRET_ACCESS_KEY", extract_dir, "-ri")
 			if len(out) > 0:
-				print "AWS_SEC:"
-				print out
+				# print "AWS_SEC:"
+				# print out
 				found_key = True
 			
 			if found_key or found_id:
@@ -115,17 +148,18 @@ def main():
 												args.in_dir + "/" + apk_file])
 
 				print "AWS_ID val:"
-				print simple_grep("(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])", smali_dir, "-RP")
-				print "AWS_SEC val:"		
+				aws_id_res = simple_grep("(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])", smali_dir, "-RP")
+				print_not_matches(aws_id_res, aws_pat)
+				print "\nAWS_SEC val:"		
 				# print simple_grep("(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])", extract_dir, "-RP")
-				print simple_grep("""(?<![A-Za-z0-9/+])[="\s][A-Za-z0-9/+=]{40}["\s](?![A-Za-z0-9/+=;$])""", smali_dir, "-RP")
+				aws_sec_res = simple_grep("""(?<![A-Za-z0-9/+])[="\s][A-Za-z0-9/+=]{40}["\s](?![A-Za-z0-9/+=;$])""", smali_dir, "-RP")
+				print_not_matches(aws_sec_res, aws_pat)
 
-
-			raw_input("> ")
+			
 			else:
 				shutil.rmtree(out_dir)
 
 			print "\n\n"
-
+			# raw_input("> ")
 if __name__ == '__main__':
 	main()

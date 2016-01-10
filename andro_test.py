@@ -1,8 +1,18 @@
 import re
+import sys
+import time
 import pprint
+import signal
+import logging
 import argparse
-import multiprocessing
+import traceback
+import cStringIO
+import multiprocessing as mp
 
+
+from elftools.elf.elffile import ELFFile
+
+import os
 from os import listdir
 from os.path import isfile, join
 
@@ -16,7 +26,10 @@ BLACKLIST_FILETYPES = [
 	"jet",
 	"css",
 	"js",
-	"ttf"]
+	"ttf",
+	"fbstr",
+	"svg",
+	"png"]
 
 def is_blacklist_filetype(file):
 	exten = file.split('.')[-1]
@@ -73,48 +86,50 @@ def _find_in_list(data, list_data):
 
 
 def is_sec_fp(a, d, data):
-	if data[:5] == "/com/":
-		return True
-	elif data[:9] == "Landroid/":
-		return True
-	elif data[:5] == "Lcom/":
-		return True
-	elif data[:6] == "Ljava/":
-		return True
-	elif data == "ABCDEFGHJKLMNPQRSTXY": # placeholder AWS_ID
-		return True
-	elif data == "DROPPEDSESSIONLENGTH":
-		return True
-	elif data == "LAUNCHESAFTERUPGRADE":
-		return True
-	elif data == "COMPROMISEDLIBRARIES":
-		return True
-	elif data == "========================================": # derp
-		return True
-	elif data == "3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f": # MIME boundry
-		return True
-	elif data == "5e8f16062ea3cd2c4a0d547876baa6f38cabf625": # FB hash
-		return True
-	elif data == "8a3c4b262d721acd49a4bf97d5213199c86fa2b9": # FB hash
-		return True
-	elif data == "a4b7452e2ed8f5f191058ca7bbfd26b0d3214bfc": # FB hash
-		return True
-	elif data == "bca6990fc3c15a8105800c0673517a4b579634a1": # X-CRASHLYTICS-DEVELOPER-TOKEN
-		return True
-	elif data == "registerOnSharedPreferenceChangeListener": # nfc why this is not found
-		return True
-	elif data == "setJavaScriptCanOpenWindowsAutomatically":
-		return True
-	elif data == "startAppWidgetConfigureActivityForResult":
-		return True
-	elif _find_in_list(data, d.get_classes_names()):
-		# print "DROPING CLASS:\t%s" % data
-		return True
-	elif d.get_method(data):
-		return True
-	else:
-		return False
-
+	try:
+		if data[:5] == "/com/":
+			return True
+		elif data[:9] == "Landroid/":
+			return True
+		elif data[:5] == "Lcom/":
+			return True
+		elif data[:6] == "Ljava/":
+			return True
+		elif data == "ABCDEFGHJKLMNPQRSTXY": # placeholder AWS_ID
+			return True
+		elif data == "DROPPEDSESSIONLENGTH":
+			return True
+		elif data == "LAUNCHESAFTERUPGRADE":
+			return True
+		elif data == "COMPROMISEDLIBRARIES":
+			return True
+		elif data == "========================================": # derp
+			return True
+		elif data == "3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f": # MIME boundry
+			return True
+		elif data == "5e8f16062ea3cd2c4a0d547876baa6f38cabf625": # FB hash
+			return True
+		elif data == "8a3c4b262d721acd49a4bf97d5213199c86fa2b9": # FB hash
+			return True
+		elif data == "a4b7452e2ed8f5f191058ca7bbfd26b0d3214bfc": # FB hash
+			return True
+		elif data == "bca6990fc3c15a8105800c0673517a4b579634a1": # X-CRASHLYTICS-DEVELOPER-TOKEN
+			return True
+		elif data == "registerOnSharedPreferenceChangeListener": # nfc why this is not found
+			return True
+		elif data == "setJavaScriptCanOpenWindowsAutomatically":
+			return True
+		elif data == "startAppWidgetConfigureActivityForResult":
+			return True
+		elif _find_in_list(data, d.get_classes_names()):
+			# print "DROPING CLASS:\t%s" % data
+			return True
+		elif d.get_method(data):
+			return True
+		else:
+			return False
+	except:
+		return True;
 
 AWS_ID_PAT = "(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])"
 AWS_SEC_PAT = "(?<![A-Za-z0-9/+])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=;$])"
@@ -125,16 +140,29 @@ def get_files_in_dir(dir_path):
 	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
 
 class Logger():
-	def __init__(self):
+	def __init__(self, file, res_queue):
+		self.file = file
 		self.LOG = ""
+		self.res_queue = res_queue
 	def log(self, data):
 		self.LOG += "%s\n" % data
-	def data(self):
-		return self.LOG
+	def flush(self):
+		self.res_queue.put(self.LOG)
+		self.LOG = ""
+	def clean(self):
+		self.LOG = ""
 
+def logger_runner(log_file, res_queue):
+	print "started logger"
+	fd = open(log_file, "a")
+	while True:
+		res_queue.get(True)
+		log_data = res_queue.get()
+		fd.write(log_data)
+		fd.flush()
 
-def analyzer(args, queue, lock):
-	log = Logger()
+def aws_analyzer(args, queue, res_queue):
+	log = Logger(args.log_file, res_queue)
 	while True:
 		if queue.empty():
 			return
@@ -166,16 +194,132 @@ def analyzer(args, queue, lock):
 
 			log.log("\n\n")
 			# flush to log_file
-			lock.acquire()
-			with open(args.log_file, "wa") as fd:
-				fd.write(log.data())
-			lock.release()
+			log.flush()
 
 			# cleaning?
 			a = None
 			d = None
 
 	# dx = analysis.newVMAnalysis(d)
+
+def file_checker(args, queue, res_queue):
+	log = Logger(args.log_file, res_queue)
+	while True:
+		if queue.empty():
+			return
+		else:
+			apk_file = queue.get()
+
+			file_path = args.in_dir + "/" + apk_file
+			log.log("Checking: %s\n" % file_path)
+			a = apk.APK(file_path)
+
+			so_files = []
+			for file in a.get_files():
+				exten = file.split('.')[-1]
+				if exten == "so":
+					so_files.append(file)
+
+			if len(so_files) == 0:
+				continue
+
+			log.log("Found %d .so files" % len(so_files))
+
+			for so_file in so_files:
+				elf_data = a.get_file(so_file)
+				elf_stream = cStringIO.StringIO(elf_data)
+				try:
+					elf = ELFFile(elf_stream)
+				except:
+					log.log("ERROR: bad elf file")
+					log.flush()
+					continue
+
+				log.log("  File: %s" % so_file)
+				log.log("  Elf sections:")
+				for section in elf.iter_sections():
+					log.log("\t%s" % section.name)
+					if section.name == ".comment" or section.name == ".conststring":
+						log.log("\t\t%s" % section.data().replace("\x00", "\n"))
+
+			log.log("\n\n")
+			log.flush()
+
+def amazon_finder(args, queue, res_queue):
+	log = Logger(args.log_file, res_queue)
+	while True:
+		if queue.empty():
+			return
+		else:
+			apk_file = queue.get()
+
+			file_path = args.in_dir + "/" + apk_file
+			log.log("Checking: %s\n" % file_path)
+
+			try:
+				a = apk.APK(file_path)
+			except:
+				log.log("ERROR parsing apk\n")
+				log.flush()
+				continue
+
+			found_aws = False
+			main_act = a.get_main_activity()
+			if not main_act:
+				log.log("NO ACTIVITY: %s" % file_path)
+				# fall back to just the apk file name
+				main_act = apk_file
+
+			# try and skip any com.amazon.* apps
+			if re.search("\"com.amazon\"", main_act):
+				log.log("skipping: %s\n" % main_act)
+				log.flush()
+				continue
+
+			d = dvm.DalvikVMFormat(a.get_dex())
+
+			for current_class in d.get_classes():
+				if re.search("\"amazon\"", current_class.get_name()):
+					found_aws = True
+					break
+
+			if found_aws:
+				log.log("FOUND: %s\n" % (file_path))
+
+				assets = get_asset_files(a)
+				found = regex_apk_files(a, assets, AWS_KEY_C)
+
+				log.log("asset KEYS:")
+				for data, file in found:
+					log.log("%s: %s" % (file, data))
+
+				log.log("Disassembling Dalvik code")
+				d = dvm.DalvikVMFormat(a.get_dex())
+
+				log.log("Searching for keys in dalvik code")
+				found = regex_dvm_strings(d, AWS_KEY_C)
+
+				log.log("Dalvik keys:")
+				# I need to figure out how to take a raw str -> file origin.
+				for data, str_d in found:
+					if not is_sec_fp(a, d, data):
+						log.log("%s" % (data))
+
+				# cleaning?
+				a = None
+				d = None
+
+			log.log("\n")
+			log.flush()
+
+def runner(func, args, queue, res_queue):
+	try:
+		func(args, queue, res_queue)
+	except:
+		raise Exception("".join(traceback.format_exception(*sys.exc_info())))
+
+def init_worker():
+	signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 def main():
 	parser = argparse.ArgumentParser(description='analyzer of APKs')
@@ -187,27 +331,47 @@ def main():
 						help="force a number of cores to use")
 	args = parser.parse_args()
 
-
 	if args.cores:
 		cores = arg.cores
 	else:
-		cores = multiprocessing.cpu_count()
-	# cores -= 1
+		cores = mp.cpu_count()
 
 	print "Started with %d cores, log file: %s" % (cores, args.log_file)
 	apk_files = get_files_in_dir(args.in_dir)
 
-	lock = multiprocessing.Lock()
-	q = multiprocessing.Queue()
+	# Enable for debugging info.
+	# mp.log_to_stderr(logging.DEBUG)
+	manager = mp.Manager()
+	pool = mp.Pool(cores + 2, init_worker)
+
+	queue = manager.Queue()
+	res_queue = manager.Queue()
+	lock = manager.Lock()
+
 	for apk in apk_files:
-		q.put(apk)
+		queue.put(apk)
 
-	for i in xrange(0,cores):
-		p = multiprocessing.Process(target=analyzer, args=(args,q,lock,))
-		p.start()
-	p.join()
+	try:
+		# TODO: make the runner handle multiple arg lists?
+		log_result = pool.apply_async(logger_runner, (args.log_file, res_queue))
+		
+		worker_results = []
+		for i in xrange(0, cores):
+			worker_results.append(pool.apply_async(runner, (amazon_finder, args, queue, res_queue)))
+		pool.close()
 
-	# analyzer(args, apk_files)
+		for res in worker_results:
+			result = res.get()
+			if not res.successful():
+				print "one of the workers failed"
+		print "completed all work"
+		pool.terminate()
+		pool.join()
+
+	except KeyboardInterrupt:
+		print "Exiting!"
+		pool.terminate()
+		pool.join()
 	
 if __name__ == '__main__':
 	main()

@@ -6,4 +6,4 @@ Simple program to mine through APKs at high speed.  It uses a modular method of 
 
 - androguard
 - pyelftools
-- yara
+

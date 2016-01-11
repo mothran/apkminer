@@ -312,6 +312,38 @@ def amazon_finder(args, queue, res_queue):
 			log.log("\n")
 			log.flush()
 
+
+def silverpush_anal(args, queue, res_queue):
+	log = Logger(args.log_file, res_queue)
+	while True:
+		if queue.empty():
+			return
+		else:
+			apk_file = queue.get()
+
+			file_path = args.in_dir + "/" + apk_file
+			log.log("Checking: %s\n" % file_path)
+
+			try:
+				a = apk.APK(file_path)
+			except:
+				log.log("ERROR parsing apk\n")
+				log.flush()
+				continue
+
+			record_perm = "android.permission.RECORD_AUDIO" in a.get_permissions()
+
+			try:
+				if "com.silverpush.sdk.android.SPService" in a.get_services() or "com.silverpush.sdk.android.BR_CallState" in a.get_receivers():
+					log.log("found silverpush, can record: %s" % str(record_perm))
+					log.flush()
+					continue
+			except:
+				log.log("BAD APK DATA: %s" % apk_file)
+
+			log.log("\n")
+			log.flush()
+
 def runner(func, args, queue, res_queue):
 	try:
 		func(args, queue, res_queue)
@@ -357,13 +389,15 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (amazon_finder, args, queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (silverpush_anal, args, queue, res_queue)))
 		pool.close()
 
 		for res in worker_results:
 			result = res.get()
 			if not res.successful():
 				print "one of the workers failed"
+
+
 		print "completed all work"
 		pool.terminate()
 		pool.join()

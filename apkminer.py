@@ -30,7 +30,8 @@ BLACKLIST_FILETYPES = [
 	"fbstr",
 	"svg",
 	"png",
-	"otf"]
+	"otf",
+	"mp3"]
 
 def is_blacklist_filetype(file):
 	exten = file.split('.')[-1]
@@ -263,11 +264,14 @@ def amazon_finder(args, queue, res_queue):
 
 					for res in found_key:
 						#bail out on FP hits
-						if fp_detect.is_sec_fp(res) or fp_detect.is_xref_fp(ref_obj.get_class_name()):
+						if fp_detect.is_sec_fp(res):
 							continue
 						
 						log.log("  %s" % res)
 						for ref_class, ref_method in ref_obj.get_xref_from():
+							if fp_detect.is_xref_fp(ref_method.get_class_name()):
+								continue
+
 							log.log("    REF: %s->%s%s" % (ref_method.get_class_name(), 
 														   ref_method.get_name(),
 														   ref_method.get_descriptor()))

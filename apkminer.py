@@ -120,6 +120,14 @@ class FPDetect():
 		else:
 			return False
 
+	def is_xref_fp(self, data):
+		if data[:14] == "Lmono/android/":
+			return True
+		elif data[:25] == "Lcom/twitter/sdk/android/":
+			return True
+		else:
+			return False
+
 
 AWS_ID_PAT = "(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])"
 AWS_SEC_PAT = "(?<![A-Za-z0-9/+])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=;$])"
@@ -255,7 +263,7 @@ def amazon_finder(args, queue, res_queue):
 
 					for res in found_key:
 						#bail out on FP hits
-						if fp_detect.is_sec_fp(res):
+						if fp_detect.is_sec_fp(res) or fp_detect.is_xref_fp(ref_obj.get_class_name()):
 							continue
 						
 						log.log("  %s" % res)

@@ -222,7 +222,7 @@ def private_key(args, queue, res_queue):
 			for file in a.get_files():
 				file_data = a.get_file(file)
 				if re.search(".PRIVATE KEY-----", file_data):
-					log.log("  %s:\n%s" % (file, file_data))
+					log.log(u"  FOUND  %s:\n%s" % (file, file_data))
 
 			log.log("\n\n")
 			log.flush()

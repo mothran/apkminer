@@ -29,7 +29,8 @@ BLACKLIST_FILETYPES = [
 	"ttf",
 	"fbstr",
 	"svg",
-	"png"]
+	"png",
+	"otf"]
 
 def is_blacklist_filetype(file):
 	exten = file.split('.')[-1]
@@ -61,32 +62,23 @@ def regex_apk_files(a, files, pat):
 			results.append([find, file])
 	return results
 
-def regex_dvm_strings(d, pat):
-	results = []
-	for str_d in d.get_string_data_item():
-		data = str_d.get()
-		found = re.findall(pat, data)
-		for find in found:
-			results.append([find, str_d])
-	return results
+class FPDetect():
+	def __init__(self, a, d):
+		self.a = a
+		self.d = d
+		# create blob of data to regex, kinda a hack but faster than multiple calls to re.*
+		self.classes_str = str(self.d.get_classes_names())
 
-def _find_in_list(data, list_data):
-	blob = str(list_data)
-	if blob.find(data) != -1:
-		return True
-
-	# HACKS
-	try:
-		if re.search("%s" % data, blob, re.IGNORECASE):
+	def _find_in_classes(self, data):
+		if self.classes_str.find(data) != -1:
 			return True
-	except:
-		print "BAD REGEX"
-		pass
-	return False
 
+		# fall back to case insensitive search. 
+		if re.search(".%s." % data, self.classes_str, re.IGNORECASE):
+			return True
+		return False
 
-def is_sec_fp(a, d, data):
-	try:
+	def is_sec_fp(self, data):
 		if data[:5] == "/com/":
 			return True
 		elif data[:9] == "Landroid/":
@@ -121,15 +113,13 @@ def is_sec_fp(a, d, data):
 			return True
 		elif data == "startAppWidgetConfigureActivityForResult":
 			return True
-		elif _find_in_list(data, d.get_classes_names()):
-			# print "DROPING CLASS:\t%s" % data
+		elif self._find_in_classes(data):     # is this string a method
 			return True
-		elif d.get_method(data):
+		elif self.d.get_method(data): # is this string a class
 			return True
 		else:
 			return False
-	except:
-		return True;
+
 
 AWS_ID_PAT = "(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])"
 AWS_SEC_PAT = "(?<![A-Za-z0-9/+])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=;$])"
@@ -160,47 +150,6 @@ def logger_runner(log_file, res_queue):
 		log_data = res_queue.get()
 		fd.write(log_data)
 		fd.flush()
-
-def aws_analyzer(args, queue, res_queue):
-	log = Logger(args.log_file, res_queue)
-	while True:
-		if queue.empty():
-			return
-		else:
-			apk_file = queue.get()
-
-			file_path = args.in_dir + "/" + apk_file
-			log.log("Checking: %s\n" % file_path)
-			a = apk.APK(file_path)
-			
-			assets = get_asset_files(a)
-			found = regex_apk_files(a, assets, AWS_KEY_C)
-
-			log.log("asset KEYS:")
-			for data, file in found:
-				log.log("%s: %s" % (file, data))
-
-			log.log("Disassembling Dalvik code")
-			d = dvm.DalvikVMFormat(a.get_dex())
-
-			log.log("Searching for keys in dalvik code")
-			found = regex_dvm_strings(d, AWS_KEY_C)
-
-			log.log("Dalvik keys:")
-			# I need to figure out how to take a raw str -> file origin.
-			for data, str_d in found:
-				if not is_sec_fp(a, d, data):
-					log.log("%s" % (data))
-
-			log.log("\n\n")
-			# flush to log_file
-			log.flush()
-
-			# cleaning?
-			a = None
-			d = None
-
-	# dx = analysis.newVMAnalysis(d)
 
 def file_checker(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
@@ -252,7 +201,6 @@ def amazon_finder(args, queue, res_queue):
 			return
 		else:
 			apk_file = queue.get()
-
 			file_path = args.in_dir + "/" + apk_file
 			log.log("Checking: %s\n" % file_path)
 
@@ -271,7 +219,7 @@ def amazon_finder(args, queue, res_queue):
 				main_act = apk_file
 
 			# try and skip any com.amazon.* apps
-			if re.search("\"com.amazon\"", main_act):
+			if re.search(".com.amazon.", main_act):
 				log.log("skipping: %s\n" % main_act)
 				log.flush()
 				continue
@@ -279,39 +227,45 @@ def amazon_finder(args, queue, res_queue):
 			d = dvm.DalvikVMFormat(a.get_dex())
 
 			for current_class in d.get_classes():
-				if re.search("\"amazon\"", current_class.get_name()):
+				# log.log(current_class.get_name())
+				if re.search(".amazon.", current_class.get_name(), re.IGNORECASE):
 					found_aws = True
 					break
 
 			if found_aws:
-				log.log("FOUND: %s\n" % (file_path))
-
 				assets = get_asset_files(a)
 				found = regex_apk_files(a, assets, AWS_KEY_C)
 
 				log.log("asset KEYS:")
 				for data, file in found:
-					log.log("%s: %s" % (file, data))
+					log.log("  %s: %s" % (file, data))
 
-				log.log("Disassembling Dalvik code")
+
 				d = dvm.DalvikVMFormat(a.get_dex())
+				dx = analysis.newVMAnalysis( d )
+				d.set_vmanalysis( dx )
+				dx.create_xref()
 
-				log.log("Searching for keys in dalvik code")
-				found = regex_dvm_strings(d, AWS_KEY_C)
 
-				log.log("Dalvik keys:")
-				# I need to figure out how to take a raw str -> file origin.
-				for data, str_d in found:
-					if not is_sec_fp(a, d, data):
-						log.log("%s" % (data))
+				fp_detect = FPDetect(a,d)
 
-				# cleaning?
-				a = None
-				d = None
+				log.log("\nDalvik keys:")
+				for str_val, ref_obj in dx.get_strings_analysis().iteritems():
+					found_key = re.findall(AWS_KEY_C, str_val)
 
+					for res in found_key:
+						#bail out on FP hits
+						if fp_detect.is_sec_fp(res):
+							continue
+						
+						log.log("  %s" % res)
+						for ref_class, ref_method in ref_obj.get_xref_from():
+							log.log("    REF: %s->%s%s" % (ref_method.get_class_name(), 
+														   ref_method.get_name(),
+														   ref_method.get_descriptor()))
+						
 			log.log("\n")
 			log.flush()
-
 
 def silverpush_anal(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
@@ -389,7 +343,7 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (silverpush_anal, args, queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (amazon_finder, args, queue, res_queue)))
 		pool.close()
 
 		for res in worker_results:

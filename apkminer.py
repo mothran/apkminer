@@ -126,6 +126,10 @@ class FPDetect():
 			return True
 		elif data[:25] == "Lcom/twitter/sdk/android/":
 			return True
+		elif data[:12] == "Lcom/amazon/":
+			return True
+		elif data[:20] == "Lcom/google/android/":
+			return True
 		else:
 			return False
 
@@ -203,6 +207,27 @@ def file_checker(args, queue, res_queue):
 			log.log("\n\n")
 			log.flush()
 
+def private_key(args, queue, res_queue):
+	log = Logger(args.log_file, res_queue)
+	while True:
+		if queue.empty():
+			return
+		else:
+			apk_file = queue.get()
+
+			file_path = args.in_dir + "/" + apk_file
+			log.log("Checking: %s\n" % file_path)
+			a = apk.APK(file_path)
+
+			for file in a.get_files():
+				file_data = a.get_file(file)
+				if re.search(".PRIVATE KEY-----", file_data):
+					log.log("  %s:\n%s" % (file, file_data))
+
+			log.log("\n\n")
+			log.flush()
+
+
 def amazon_finder(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
 	while True:
@@ -279,7 +304,7 @@ def amazon_finder(args, queue, res_queue):
 			log.log("\n")
 			log.flush()
 
-def silverpush_anal(args, queue, res_queue):
+def silverpush(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
 	while True:
 		if queue.empty():
@@ -322,19 +347,53 @@ def init_worker():
 def main():
 	parser = argparse.ArgumentParser(description='analyzer of APKs')
 	parser.add_argument("-i", "--in_dir", type=str,
-						help="directory of apk files to analyze", required=True)
+						help="directory of apk files to analyze", default=None)
 	parser.add_argument("-o", "--log_file", type=str,
 						help="log file to write to", default="OUTPUT.log")
 	parser.add_argument("-c", "--cores", type=int,
 						help="force a number of cores to use")
+	parser.add_argument("-a", "--analyzer", type=str,
+						help="Select the analyzer you want to use.", default="file_checker")
+	parser.add_argument("-l", "--list_analyzers", action="store_true",
+						help="List the possible analyzers")
+
 	args = parser.parse_args()
+
+	# Complete listing of possible analyzers
+	analyzer_funcs = {'file_checker':file_checker,
+					  'private_key':private_key,
+					  'amazon_finder':amazon_finder,
+					  'silverpush':silverpush}
+
+	if args.list_analyzers:
+		print "Analyzers:"
+		for func_name, func in analyzer_funcs.iteritems():
+			print "  %s" % func_name
+		return
+
+	if not args.in_dir:
+		print "Please provide a input directory with -i"
+		return
+
+	selected_analyzer = None
+	for func_name, func in analyzer_funcs.iteritems():
+		if func_name == args.analyzer:
+			selected_analyzer = func
+			break
+	if not selected_analyzer:
+		print "You selected a bad analyzer [%s]" % args.analyzer
+		print "Analyzers:"
+		for func_name, func in analyzer_funcs.iteritems():
+			print "  %s" % func_name
+
+		return
 
 	if args.cores:
 		cores = arg.cores
 	else:
 		cores = mp.cpu_count()
 
-	print "Started with %d cores, log file: %s" % (cores, args.log_file)
+	print "Started '%s' analyzer with %d cores, log file: %s" % (selected_analyzer.__name__, cores, args.log_file)
 	apk_files = get_files_in_dir(args.in_dir)
 
 	# Enable for debugging info.
@@ -355,7 +414,7 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (amazon_finder, args, queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (selected_analyzer, args, queue, res_queue)))
 		pool.close()
 
 		for res in worker_results:

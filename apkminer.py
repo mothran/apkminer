@@ -213,16 +213,22 @@ def private_key(args, queue, res_queue):
 		if queue.empty():
 			return
 		else:
-			apk_file = queue.get()
+                        apk_file = queue.get()
+                        file_path = args.in_dir + "/" + apk_file
+                        log.log("Checking: %s\n" % file_path)
 
-			file_path = args.in_dir + "/" + apk_file
-			log.log("Checking: %s\n" % file_path)
-			a = apk.APK(file_path)
+                        try:
+                                a = apk.APK(file_path)
+                        except:
+                                log.log("ERROR parsing apk\n")
+                                log.flush()
+                                continue
 
 			for file in a.get_files():
 				file_data = a.get_file(file)
 				if re.search(".PRIVATE KEY-----", file_data):
-					log.log(u"  FOUND  %s:\n%s" % (file, file_data))
+					log.log("  FOUND %s" % file)
+					#log.log("  FOUND  %s:\n%s" % (file.decode('utf-8', 'ignore'), file_data.decode('utf-8', 'ignore')))
 
 			log.log("\n\n")
 			log.flush()

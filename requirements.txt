@@ -1,0 +1,2 @@
+pyelftools
+-e git+https://github.com/androguard/androguard.git#egg=androguard

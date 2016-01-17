@@ -1,13 +1,14 @@
-from utils import Logger
 from elftools.elf.elffile import ELFFile
 
-def analyze(args, queue, res_queue):
+from utils import *
+
+def analyze(args, apk_queue, res_queue):
 	log = Logger(args.log_file, res_queue)
 	while True:
-		if queue.empty():
+		if apk_queue.empty():
 			return
 		else:
-			apk_file = queue.get()
+			apk_file = apk_queue.get()
 
 			file_path = args.in_dir + "/" + apk_file
 			log.log("Checking: %s\n" % file_path)

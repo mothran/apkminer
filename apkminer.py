@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 import time
 import pprint
@@ -96,12 +98,17 @@ def main():
 	manager = mp.Manager()
 	pool = mp.Pool(cores + 2, init_worker)
 
-	queue = manager.Queue()
+	apk_queue = manager.Queue()
 	res_queue = manager.Queue()
 	lock = manager.Lock()
 
+	# if we have a small count of APK files, limit our worker count
+	apk_count = len(apk_files)
+	if apk_count < cores:
+		cores = apk_count
+
 	for apk in apk_files:
-		queue.put(apk)
+		apk_queue.put(apk)
 
 	try:
 		# TODO: make the runner handle multiple arg lists?
@@ -109,14 +116,13 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, apk_queue, res_queue)))
 		pool.close()
 
 		for res in worker_results:
 			result = res.get()
 			if not res.successful():
 				print "one of the workers failed"
-
 
 		print "completed all work"
 		pool.terminate()

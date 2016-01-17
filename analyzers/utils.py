@@ -1,3 +1,7 @@
+from androguard.core.bytecodes import apk
+from androguard.core.bytecodes import dvm
+from androguard.core.analysis import analysis
+
 import re
 
 BLACKLIST_FILETYPES = [

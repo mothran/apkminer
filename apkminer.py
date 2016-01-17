@@ -122,7 +122,7 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (selected_analyzer, args, queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, queue, res_queue)))
 		pool.close()
 
 		for res in worker_results:

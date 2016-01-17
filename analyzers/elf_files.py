@@ -1,6 +1,6 @@
 from elftools.elf.elffile import ELFFile
 
-def elf_files(args, queue, res_queue):
+def analyze(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
 	while True:
 		if queue.empty():

@@ -1,3 +1,4 @@
+from utils import Logger
 from elftools.elf.elffile import ELFFile
 
 def analyze(args, queue, res_queue):

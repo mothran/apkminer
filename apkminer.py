@@ -21,19 +21,6 @@ from analyzers import *
 def get_files_in_dir(dir_path):
 	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
 
-class Logger():
-	def __init__(self, file, res_queue):
-		self.file = file
-		self.LOG = ""
-		self.res_queue = res_queue
-	def log(self, data):
-		self.LOG += "%s\n" % data
-	def flush(self):
-		self.res_queue.put(self.LOG)
-		self.LOG = ""
-	def clean(self):
-		self.LOG = ""
-
 def logger_runner(log_file, res_queue):
 	print "started logger"
 	fd = open(log_file, "a")

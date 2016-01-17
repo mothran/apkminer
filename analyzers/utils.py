@@ -17,6 +17,18 @@ AWS_ID_PAT = "(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])"
 AWS_SEC_PAT = "(?<![A-Za-z0-9/+])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=;$])"
 AWS_KEY_C = re.compile(AWS_ID_PAT + "|" + AWS_SEC_PAT)
 
+class Logger():
+	def __init__(self, file, res_queue):
+		self.file = file
+		self.LOG = ""
+		self.res_queue = res_queue
+	def log(self, data):
+		self.LOG += "%s\n" % data
+	def flush(self):
+		self.res_queue.put(self.LOG)
+		self.LOG = ""
+	def clean(self):
+		self.LOG = ""
 
 def is_blacklist_filetype(file):
 	exten = file.split('.')[-1]

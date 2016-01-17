@@ -1,4 +1,6 @@
-def silverpush(args, queue, res_queue):
+from utils import Logger
+
+def analyze(args, queue, res_queue):
 	log = Logger(args.log_file, res_queue)
 	while True:
 		if queue.empty():

@@ -86,7 +86,7 @@ def main():
 		return
 
 	if args.cores:
-		cores = arg.cores
+		cores = args.cores
 	else:
 		cores = mp.cpu_count()
 

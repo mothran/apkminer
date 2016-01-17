@@ -120,5 +120,3 @@ class FPDetect():
 		else:
 			return False
 
-def get_files_in_dir(dir_path):
-	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]

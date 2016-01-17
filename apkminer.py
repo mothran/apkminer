@@ -16,9 +16,10 @@ from androguard.core.bytecodes import apk
 from androguard.core.bytecodes import dvm
 from androguard.core.analysis import analysis
 
-import analyzers
+from analyzers import *
 
-print dir(analyzers)
+def get_files_in_dir(dir_path):
+	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
 
 class Logger():
 	def __init__(self, file, res_queue):
@@ -67,10 +68,10 @@ def main():
 	args = parser.parse_args()
 
 	# Complete listing of possible analyzers
-	analyzer_funcs = {'elf_files':analyzers.elf_files,
-					  'private_key':analyzers.private_keys,
-					  'amazon_finder':analyzers.aws_finder,
-					  'silverpush':analyzers.silverpush}
+	analyzer_funcs = {'elf_files': elf_files,
+					  'private_key': private_keys,
+					  'amazon_finder': aws_finder,
+					  'silverpush': silverpush}
 
 	if args.list_analyzers:
 		print "Analyzers:"

@@ -1,6 +1,6 @@
 from utils import *
 
-def analyze(args, apk_queue, res_queue):
+def analyze(args, apk_queue, res_queue, output_data):
 	log = Logger(args.log_file, res_queue)
 	while True:
 		if apk_queue.empty():

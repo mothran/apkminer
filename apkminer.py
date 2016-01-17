@@ -2,6 +2,7 @@
 
 import sys
 import time
+import types
 import pprint
 import signal
 import logging
@@ -18,7 +19,7 @@ from androguard.core.bytecodes import apk
 from androguard.core.bytecodes import dvm
 from androguard.core.analysis import analysis
 
-from analyzers import *
+import analyzers
 
 def get_files_in_dir(dir_path):
 	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
@@ -32,9 +33,9 @@ def logger_runner(log_file, res_queue):
 		fd.write(log_data)
 		fd.flush()
 
-def runner(func, args, queue, res_queue):
+def runner(func, args, queue, res_queue, output_data):
 	try:
-		func(args, queue, res_queue)
+		func(args, queue, res_queue, output_data)
 	except:
 		raise Exception("".join(traceback.format_exception(*sys.exc_info())))
 
@@ -56,11 +57,14 @@ def main():
 
 	args = parser.parse_args()
 
-	# Complete listing of possible analyzers
-	analyzer_funcs = {'elf_files': elf_files,
-					  'private_key': private_keys,
-					  'amazon_finder': aws_finder,
-					  'silverpush': silverpush}
+	publics = (name for name in dir(analyzers) if not name.startswith('_'))
+
+	# dynamically get all analyzers in the directory
+	analyzer_funcs = {}
+	for name in publics:
+		obj = getattr(analyzers, name)
+		if hasattr(getattr(analyzers, name), "analyze"):
+			analyzer_funcs[name] = obj
 
 	if args.list_analyzers:
 		print "Analyzers:"
@@ -100,6 +104,7 @@ def main():
 
 	apk_queue = manager.Queue()
 	res_queue = manager.Queue()
+	output_data = manager.list()
 	lock = manager.Lock()
 
 	# if we have a small count of APK files, limit our worker count
@@ -116,17 +121,29 @@ def main():
 		
 		worker_results = []
 		for i in xrange(0, cores):
-			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, apk_queue, res_queue)))
+			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, apk_queue, res_queue, output_data)))
 		pool.close()
 
-		for res in worker_results:
-			result = res.get()
-			if not res.successful():
-				print "one of the workers failed"
+		while len(worker_results) > 0:
+			for i, res in enumerate(worker_results):
+				if res.ready():
+					result = res.get()
+					if not res.successful():
+						print "one of the workers failed"
+						worker_results = []
+						break
+					else:
+						worker_results.pop(i)
+
+				time.sleep(1)
 
 		print "completed all work"
 		pool.terminate()
 		pool.join()
+
+		# if we have a final output (.csv or something), call its handler here.
+		if hasattr(selected_analyzer, 'output_results'):
+			selected_analyzer.output_results(output_data)
 
 	except KeyboardInterrupt:
 		print "Exiting!"

@@ -9,6 +9,8 @@ import logging
 import argparse
 import traceback
 import cStringIO
+
+import Queue # just for exceptions
 import multiprocessing as mp
 
 import os
@@ -24,14 +26,28 @@ import analyzers
 def get_files_in_dir(dir_path):
 	return [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
 
-def logger_runner(log_file, res_queue):
+def logger_runner(log_file, res_queue, end_event):
 	print "started logger"
 	fd = open(log_file, "a")
-	while True:
-		res_queue.get(True)
-		log_data = res_queue.get()
+	while not end_event.is_set():
+		try:
+			log_data = res_queue.get(False, 1)
+		except Queue.Empty:
+			continue
+
 		fd.write(log_data)
 		fd.flush()
+
+	fd.close()
+
+def output_processor(output_queue, end_event, analyzer_out_func):
+	data = []
+	while not end_event.is_set():
+		try:
+			data.append(output_queue.get(False, 1))
+		except Queue.Empty:
+			continue
+	analyzer_out_func(data)
 
 def runner(func, args, queue, res_queue, output_data):
 	try:
@@ -61,10 +77,14 @@ def main():
 
 	# dynamically get all analyzers in the directory
 	analyzer_funcs = {}
+	selected_output_func = None
+
 	for name in publics:
 		obj = getattr(analyzers, name)
-		if hasattr(getattr(analyzers, name), "analyze"):
+		if hasattr(obj, "analyze"):
 			analyzer_funcs[name] = obj
+			if hasattr(obj, "output_results"):
+				selected_output_func = getattr(obj,"output_results") 
 
 	if args.list_analyzers:
 		print "Analyzers:"
@@ -94,7 +114,8 @@ def main():
 	else:
 		cores = mp.cpu_count()
 
-	print "Started '%s' analyzer with %d cores, log file: %s" % (selected_analyzer.__name__, cores, args.log_file)
+	print "Starting '%s' analyzer with %d cores, log file: %s" % (selected_analyzer.__name__, cores, args.log_file)
+
 	apk_files = get_files_in_dir(args.in_dir)
 
 	# Enable for debugging info.
@@ -103,9 +124,13 @@ def main():
 	pool = mp.Pool(cores + 2, init_worker)
 
 	apk_queue = manager.Queue()
+	
+	# for logging 
 	res_queue = manager.Queue()
-	output_data = manager.list()
-	lock = manager.Lock()
+
+	# for data output
+	output_data = manager.Queue()
+	end_event = manager.Event()
 
 	# if we have a small count of APK files, limit our worker count
 	apk_count = len(apk_files)
@@ -117,8 +142,12 @@ def main():
 
 	try:
 		# TODO: make the runner handle multiple arg lists?
-		log_result = pool.apply_async(logger_runner, (args.log_file, res_queue))
+		log_result = pool.apply_async(logger_runner, (args.log_file, res_queue, end_event))
 		
+		if selected_output_func:
+			print "started output output_processor"
+			output_res = pool.apply_async(output_processor, (output_data, end_event, selected_output_func))
+
 		worker_results = []
 		for i in xrange(0, cores):
 			worker_results.append(pool.apply_async(runner, (selected_analyzer.analyze, args, apk_queue, res_queue, output_data)))
@@ -138,12 +167,15 @@ def main():
 				time.sleep(1)
 
 		print "completed all work"
-		pool.terminate()
+		end_event.set()
 		pool.join()
 
-		# if we have a final output (.csv or something), call its handler here.
-		if hasattr(selected_analyzer, 'output_results'):
-			selected_analyzer.output_results(output_data)
+		# get the exception if the output func fails.
+		if selected_output_func:
+			output_res.get()
+
+		pool.terminate()
+		pool.join()
 
 	except KeyboardInterrupt:
 		print "Exiting!"

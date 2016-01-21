@@ -2,10 +2,38 @@ import hashlib
 
 from utils import *
 
-def output_results(output_data):
-	for so_file in output_data:
-		print "%s,%d,%s,%s" % (so_file["name"], so_file["count"], so_file["sha_hashes"], so_file["apk_files"])
+try:
+   import cPickle as pickle
+except:
+   import pickle
 
+def get_base_name(elf_file):
+	if elf_file.find("/") != -1:
+		return elf_file.split("/")[-1]
+	else:
+		return elf_file
+
+
+def output_results(output_data):
+	final_data = {}
+	for element in output_data:
+		cur_name = element["name"]
+		if cur_name in final_data:
+			final_data[cur_name]["count"] += 1
+			final_data[cur_name]["sha_hashes"].append(element["sha_hash"])
+			final_data[cur_name]["apk_files"].append(element["apk_file"])
+		else:
+			final_data[cur_name] = {}
+			final_data[cur_name]["count"] = 1
+			final_data[cur_name]["sha_hashes"] = [element["sha_hash"]]
+			final_data[cur_name]["apk_files"] = [element["apk_file"]]
+
+	# fd = open("output.pick", "wb")
+	# pickle.dump(final_data, fd )
+	# fd.close()
+
+	for name, obj in final_data.iteritems():
+		print "  %s, %d, %s, %s" % (name, obj["count"], str(obj["sha_hashes"]), str(obj["apk_files"]))
 
 def analyze(args, apk_queue, res_queue, output_data):
 	log = Logger(args.log_file, res_queue)
@@ -39,24 +67,9 @@ def analyze(args, apk_queue, res_queue, output_data):
 			for elf_file in so_files:
 				cur_hash = hashlib.sha1(a.get_file(elf_file)).hexdigest()
 
-				if elf_file.find("/") != -1:
-					base_name = elf_file.split("/")[-1]
-				else:
-					base_name = elf_file
+				base_name = get_base_name(elf_file)
 				
-				found = False
-				for i, so_obj in enumerate(output_data):
-					if so_obj["name"] == base_name:
-						log.log("found so file: %s" % base_name)
-						so_obj["count"] += 1
-						so_obj["sha_hashes"].append(cur_hash)
-						so_obj["apk_files"].append(apk_file)
-						output_data[i] = so_obj
-
-						found = True
-						break;
-				if not found:
-					output_data.append({"name": base_name, "count": 1, "sha_hashes": [cur_hash], "apk_files": [apk_file]})
+				output_data.put({"name": base_name, "sha_hash": cur_hash, "apk_file": apk_file})
 
 			log.log("\n\n")
 			log.flush()

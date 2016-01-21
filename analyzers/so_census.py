@@ -28,12 +28,12 @@ def output_results(output_data):
 			final_data[cur_name]["sha_hashes"] = [element["sha_hash"]]
 			final_data[cur_name]["apk_files"] = [element["apk_file"]]
 
-	# fd = open("output.pick", "wb")
-	# pickle.dump(final_data, fd )
-	# fd.close()
+	fd = open("output.pick", "wb")
+	pickle.dump(final_data, fd )
+	fd.close()
 
-	for name, obj in final_data.iteritems():
-		print "  %s, %d, %s, %s" % (name, obj["count"], str(obj["sha_hashes"]), str(obj["apk_files"]))
+	# for name, obj in final_data.iteritems():
+	# 	print "  %s, %d, %s, %s" % (name, obj["count"], str(obj["sha_hashes"]), str(obj["apk_files"]))
 
 def analyze(args, apk_queue, res_queue, output_data):
 	log = Logger(args.log_file, res_queue)

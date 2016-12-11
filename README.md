@@ -2,7 +2,16 @@
 
 Simple program to mine through APKs at high speed.  It uses a modular method of calling specific analyzers on each apk provided
 
-## Usage:
+## Setup
+
+```bash
+git submodule init
+git submodule update
+```
+
+Standard CPython works fine but I highly recommend pypy, I have seen 70% faster runs using pypy.
+
+## Usage
 
 ```
 usage: apkminer.py [-h] [-i IN_DIR] [-o LOG_FILE] [-c CORES] [-a ANALYZER]
@@ -27,13 +36,13 @@ optional arguments:
 
 ```
 private_keys  -  Find private keys in files or dex strings
-elf_files     -  Report string data from specifc sections of elf files
+elf_files     -  Report string data from specific sections of elf files
 aws_finder    -  Find AWS key pairs in files and dex strings
 so_census     -  Report on data about .so's in APKs
 silverpush    -  Finds apks that contain the silverpush library
 ```
 
-## Dependencies 
+## Dependencies
 
 - pyelftools
 

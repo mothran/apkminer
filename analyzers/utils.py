@@ -34,6 +34,56 @@ class Logger():
 	def clean(self):
 		self.LOG = ""
 
+def find_call(dx, log, class_name, func_name):
+	for name, cur_class in dx.classes.items():
+		for method in cur_class.get_methods():
+			xref_from = method.get_xref_to()
+
+			for ref_class, ref_method, offset in xref_from:
+				ref_class_name = ref_class.orig_class
+				# WTF
+				if type(ref_class_name) == analysis.ExternalClass:
+					ref_class_name = ref_class_name.name
+
+				ref_method_name = ref_method.get_name()
+
+				if ref_class_name == class_name and ref_method_name == func_name:
+					log.log("%s.%s  calls  %s.%s()" % (name, method.method.name, class_name, func_name))
+					log.log("")
+
+def find_implements(dx, log, srch_class_name):
+	for name, cur_class in dx.classes.items():
+		class_name = cur_class.orig_class
+
+		found = False
+		if type(class_name) == analysis.ExternalClass:
+			class_name = class_name.name
+
+		else:
+			if srch_class_name in cur_class.orig_class.get_interfaces():
+				found = True
+
+		if class_name == srch_class_name:
+			found = True
+
+		if found:
+			log.log("%s implements: %s" % (name, srch_class_name))
+
+		# ipdb> p cur_class.orig_class.get_interfaces()
+		# ['Ljavax/net/ssl/X509TrustManager;']
+
+		# log.log("%s implements: %s" % (name, class_name))
+		# if name == "Lo/md;":
+		# 	import ipdb; ipdb.set_trace();
+
+def find_methods(dx, log, methods):
+	for name, cur_class in dx.classes.items():
+		for method in cur_class.get_methods():
+			if method.method.name in methods:
+				log.log("%s implements: %s" % (name, method.method.name))
+
+
+
 def is_blacklist_filetype(file):
 	exten = file.split('.')[-1]
 	for b_extenion in BLACKLIST_FILETYPES:

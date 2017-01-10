@@ -31,7 +31,7 @@ def logger_runner(log_file, res_queue, end_event):
 	fd = open(log_file, "a")
 	while not end_event.is_set():
 		try:
-			log_data = res_queue.get(False, 1)
+			log_data = res_queue.get(True, 1)
 		except Queue.Empty:
 			continue
 
@@ -44,7 +44,7 @@ def output_processor(output_queue, end_event, analyzer_out_func):
 	data = []
 	while not end_event.is_set():
 		try:
-			data.append(output_queue.get(False, 1))
+			data.append(output_queue.get(True, 1))
 		except Queue.Empty:
 			continue
 	analyzer_out_func(data)

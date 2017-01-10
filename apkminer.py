@@ -78,13 +78,12 @@ def main():
 	# dynamically get all analyzers in the directory
 	analyzer_funcs = {}
 	selected_output_func = None
+	selected_stream_func = None
 
 	for name in publics:
 		obj = getattr(analyzers, name)
 		if hasattr(obj, "analyze"):
 			analyzer_funcs[name] = obj
-			if hasattr(obj, "output_results"):
-				selected_output_func = getattr(obj,"output_results") 
 
 	if args.list_analyzers:
 		print "Analyzers:"
@@ -97,10 +96,16 @@ def main():
 		return
 
 	selected_analyzer = None
-	for func_name, func in analyzer_funcs.iteritems():
+	for func_name, obj in analyzer_funcs.iteritems():
 		if func_name == args.analyzer:
-			selected_analyzer = func
+			selected_analyzer = obj
+
+			if hasattr(obj, "output_results"):
+				selected_output_func = getattr(obj,"output_results")
+			elif hasattr(obj, "stream_results"):
+				selected_stream_func = getattr(obj,"stream_results")
 			break
+
 	if not selected_analyzer:
 		print "You selected a bad analyzer [%s]" % args.analyzer
 		print "Analyzers:"
@@ -143,10 +148,13 @@ def main():
 	try:
 		# TODO: make the runner handle multiple arg lists?
 		log_result = pool.apply_async(logger_runner, (args.log_file, res_queue, end_event))
-		
+
 		if selected_output_func:
 			print "started output output_processor"
 			output_res = pool.apply_async(output_processor, (output_data, end_event, selected_output_func))
+		elif selected_stream_func:
+			print "started streaming output processor"
+			output_res = pool.apply_async(selected_stream_func, (output_data, end_event))
 
 		worker_results = []
 		for i in xrange(0, cores):
@@ -171,7 +179,7 @@ def main():
 		pool.join()
 
 		# get the exception if the output func fails.
-		if selected_output_func:
+		if selected_output_func or selected_stream_func:
 			output_res.get()
 
 		pool.terminate()
